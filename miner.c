@@ -36,20 +36,31 @@
 
 #include "sha1.h"
 
-unsigned long long total_inversions;
+struct thread_data_t{
+    char *data_block;
+    uint32_t difficulty_mask;
+    uint64_t nonce_start;
+    uint64_t nonce_end;
+    uint8_t digest[SHA1_HASH_SIZE];
+    uint64_t solution_nonce;
+    bool *found;
+};
 
+
+unsigned long long total_inversions;
+// returns the current time in seconds
 double get_time()
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return tv.tv_sec + tv.tv_usec / 1000000.0;
 }
-
+// prints the binary form of a 32 bit integer
 void print_binary32(uint32_t num) {
     int i;
-    for (i = 31; i >= 0; --i) {
-        uint32_t position = (unsigned int) 1 << i;
-        printf("%c", ((num & position) == position) ? '1' : '0');
+    for (i = 31; i >= 0; --i) {// iterates over all 32 bits
+        uint32_t position = (unsigned int) 1 << i; // the current bit
+        printf("%c", ((num & position) == position) ? '1' : '0'); // prints either 0 or 1
     }
     puts("");
 }
@@ -89,6 +100,42 @@ uint64_t mine(char *data_block, uint32_t difficulty_mask,
     return 0;
 }
 
+void *thread_mine(void *arg) {
+    struct thread_data_t *data = (struct thread_data_t *)arg;
+
+    for (uint64_t nonce = data->nonce_start; nonce < data->nonce_end; nonce++) {
+        if (*data->found) {
+            break;
+        }
+
+        size_t buf_sz = sizeof(char) * (strlen(data->data_block) + 20 + 1);
+        char *buf = malloc(buf_sz);
+
+        snprintf(buf, buf_sz, "%s%lu", data->data_block, nonce);
+
+        sha1sum(data->digest, (uint8_t *) buf, strlen(buf));
+        free(buf);
+        total_inversions++;
+
+        uint32_t hash_front = 0;
+        hash_front |= data->digest[0] << 24;
+        hash_front |= data->digest[1] << 16;
+        hash_front |= data->digest[2] << 8;
+        hash_front |= data->digest[3];
+
+        if ((hash_front & data->difficulty_mask) == hash_front) {
+            // printf("Thread %ld found a solution: nonce=%lu\n", data->nonce_start, nonce);
+            data->solution_nonce = nonce;
+            *data->found = true;
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+
+
 int main(int argc, char *argv[]) {
 
     if (argc != 4) {
@@ -96,13 +143,17 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    int num_threads = 1; // TODO
+    // allow user to specify the number of threads
+    int num_threads = atoi(argv[1]);
     printf("Number of threads: %d\n", num_threads);
 
-    // TODO we have hard coded the difficulty to 20 bits (0x0000FFF). This is a
-    // fairly quick computation -- something like 28 will take much longer.  You
-    // should allow the user to specify anywhere between 1 and 32 bits of zeros.
-    uint32_t difficulty_mask = 0x00000FFF;
+    // allow user to specify the difficulty
+    int difficulty = atoi(argv[2]);
+    if (difficulty < 1 || difficulty > 32) {
+        printf("Error: Difficulty must be between 1 and 32.\n");
+        return EXIT_FAILURE;
+    }
+    uint32_t difficulty_mask = UINT32_MAX >> difficulty;
     printf("  Difficulty Mask: ");
     print_binary32(difficulty_mask);
 
@@ -116,29 +167,42 @@ int main(int argc, char *argv[]) {
 
     double start_time = get_time();
 
-    uint8_t digest[SHA1_HASH_SIZE];
+    pthread_t threads[num_threads];
+    struct thread_data_t thread_data[num_threads];
+    uint64_t nonce_partition = UINT64_MAX / num_threads;
 
-    /* Mine the block. */
-    uint64_t nonce = mine(
-            bitcoin_block_data,
-            difficulty_mask,
-            1, UINT64_MAX,
-            digest);
+    bool solution_found = false;
 
-    double end_time = get_time();
+    for (int i = 0; i < num_threads; i++) {
+        thread_data[i].data_block = bitcoin_block_data;
+        thread_data[i].difficulty_mask = difficulty_mask;
+        thread_data[i].nonce_start = 1 + i * nonce_partition;
+        thread_data[i].nonce_end = (i == num_threads - 1) ? UINT64_MAX : 1 + (i + 1) * nonce_partition;
+        thread_data[i].found = &solution_found;
 
-    if (nonce == 0) {
-        printf("No solution found!\n");
-        return 1;
+        pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
     }
 
-    /* When printed in hex, a SHA-1 checksum will be 40 characters. */
-    char solution_hash[41];
-    sha1tostring(solution_hash, digest);
+    int solution_thread = -1;
+    for (int i = 0; i < num_threads; i++) {
+        pthread_join(threads[i], NULL);
 
-    printf("Solution found by thread %d:\n", 0);
-    printf("Nonce: %lu\n", nonce);
-    printf(" Hash: %s\n", solution_hash);
+        if (thread_data[i].solution_nonce != 0) {
+            solution_thread = i;
+        }
+    }
+
+    if (solution_thread != -1) {
+        char solution_hash[41];
+        sha1tostring(solution_hash, thread_data[solution_thread].digest);
+                printf("Solution found by thread %d:\n", solution_thread);
+        printf("Nonce: %lu\n", thread_data[solution_thread].solution_nonce);
+        printf(" Hash: %s\n", solution_hash);
+    } else {
+        printf("No solution found!\n");
+    }
+
+    double end_time = get_time();
 
     double total_time = end_time - start_time;
     printf("%llu hashes in %.2fs (%.2f hashes/sec)\n",

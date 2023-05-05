@@ -65,41 +65,6 @@ void print_binary32(uint32_t num) {
     puts("");
 }
 
-uint64_t mine(char *data_block, uint32_t difficulty_mask,
-        uint64_t nonce_start, uint64_t nonce_end,
-        uint8_t digest[SHA1_HASH_SIZE]) {
-
-    for (uint64_t nonce = nonce_start; nonce < nonce_end; nonce++) {
-        /* A 64-bit unsigned number can be up to 20 characters  when printed: */
-        size_t buf_sz = sizeof(char) * (strlen(data_block) + 20 + 1);
-        char *buf = malloc(buf_sz);
-
-        /* Create a new string by concatenating the block and nonce string.
-         * For example, if we have 'Hello World!' and '10', the new string
-         * is: 'Hello World!10' */
-        snprintf(buf, buf_sz, "%s%lu", data_block, nonce);
-
-        /* Hash the combined string */
-        sha1sum(digest, (uint8_t *) buf, strlen(buf));
-        free(buf);
-        total_inversions++;
-
-        /* Get the first 32 bits of the hash */
-        uint32_t hash_front = 0;
-        hash_front |= digest[0] << 24;
-        hash_front |= digest[1] << 16;
-        hash_front |= digest[2] << 8;
-        hash_front |= digest[3];
-
-        /* Check to see if we've found a solution to our block */
-        if ((hash_front & difficulty_mask) == hash_front) {
-            return nonce;
-        }
-    }
-
-    return 0;
-}
-
 void *thread_mine(void *arg) {
     struct thread_data_t *data = (struct thread_data_t *)arg;
 

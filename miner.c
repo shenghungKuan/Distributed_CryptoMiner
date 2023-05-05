@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
         sha1tostring(solution_hash, thread_data[solution_thread].digest);
                 printf("Solution found by thread %d:\n", solution_thread);
         printf("Nonce: %lu\n", thread_data[solution_thread].solution_nonce);
-        printf(" Hash: %s\n", solution_hash);
+        printf("Hash: %s\n", solution_hash);
     } else {
         printf("No solution found!\n");
     }

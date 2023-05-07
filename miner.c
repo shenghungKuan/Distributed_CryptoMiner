@@ -103,10 +103,50 @@ void *thread_mine(void *arg) {
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 4) {
-        printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
-        return EXIT_FAILURE;
+    // if (argc != 4) {
+    //     printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
+    //     return EXIT_FAILURE;
+    // }
+
+    // connect to the server
+    if (argc != 3) {
+       printf("Usage: %s hostname port\n", argv[0]);
+       return 1;
     }
+
+    char *server_hostname = argv[1];
+    int port = atoi(argv[2]);
+
+    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd == -1) {
+        perror("socket");
+        return 1;
+    }
+
+    struct hostent *server = gethostbyname(server_hostname);
+    if (server == NULL) {
+        fprintf(stderr, "Could not resolve host: %s\n", server_hostname);
+        return 1;
+    }
+
+    struct sockaddr_in serv_addr = { 0 };
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    serv_addr.sin_addr = *((struct in_addr *) server->h_addr);
+
+    if (connect(
+                socket_fd,
+                (struct sockaddr *) &serv_addr,
+                sizeof(struct sockaddr_in)) == -1) {
+
+        perror("connect");
+        return 1;
+    }
+
+    LOG("Connected to server %s:%d\n", server_hostname, port);
+
+    printf("Welcome. Please type your message below, or press ^D to quit.\n");
+
 
     // allow user to specify the number of threads
     int num_threads = atoi(argv[1]);

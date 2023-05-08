@@ -33,7 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-
 #include "sha1.h"
 
 struct thread_data_t{
@@ -65,23 +64,24 @@ void print_binary32(uint32_t num) {
     puts("");
 }
 
-void *thread_mine(void *arg) {
+void *mine(void *arg) {
     struct thread_data_t *data = (struct thread_data_t *)arg;
 
     for (uint64_t nonce = data->nonce_start; nonce < data->nonce_end; nonce++) {
         if (*data->found) {
             break;
         }
-
+        /* A 64-bit unsigned number can be up to 20 characters  when printed: */
         size_t buf_sz = sizeof(char) * (strlen(data->data_block) + 20 + 1);
         char *buf = malloc(buf_sz);
-
+        /* Create a new string by concatenating the block and nonce string.*/
         snprintf(buf, buf_sz, "%s%lu", data->data_block, nonce);
-
+        /* Hash the combined string */
         sha1sum(data->digest, (uint8_t *) buf, strlen(buf));
         free(buf);
         total_inversions++;
 
+        /* Get the first 32 bits of the hash */
         uint32_t hash_front = 0;
         hash_front |= data->digest[0] << 24;
         hash_front |= data->digest[1] << 16;
@@ -103,53 +103,18 @@ void *thread_mine(void *arg) {
 
 int main(int argc, char *argv[]) {
 
-    // if (argc != 4) {
-    //     printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
-    //     return EXIT_FAILURE;
-    // }
-
-    // connect to the server
-    if (argc != 3) {
-       printf("Usage: %s hostname port\n", argv[0]);
-       return 1;
+    if (argc != 4) {
+        printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
+        return EXIT_FAILURE;
     }
-
-    char *server_hostname = argv[1];
-    int port = atoi(argv[2]);
-
-    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd == -1) {
-        perror("socket");
-        return 1;
-    }
-
-    struct hostent *server = gethostbyname(server_hostname);
-    if (server == NULL) {
-        fprintf(stderr, "Could not resolve host: %s\n", server_hostname);
-        return 1;
-    }
-
-    struct sockaddr_in serv_addr = { 0 };
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-    serv_addr.sin_addr = *((struct in_addr *) server->h_addr);
-
-    if (connect(
-                socket_fd,
-                (struct sockaddr *) &serv_addr,
-                sizeof(struct sockaddr_in)) == -1) {
-
-        perror("connect");
-        return 1;
-    }
-
-    LOG("Connected to server %s:%d\n", server_hostname, port);
-
-    printf("Welcome. Please type your message below, or press ^D to quit.\n");
-
+    
 
     // allow user to specify the number of threads
     int num_threads = atoi(argv[1]);
+    if (num_threads < 1) {
+        printf("Error: Must have at least 1 thread.\n");
+        exit(EXIT_FAILURE);  
+    }
     printf("Number of threads: %d\n", num_threads);
 
     // allow user to specify the difficulty
@@ -158,7 +123,7 @@ int main(int argc, char *argv[]) {
         printf("Error: Difficulty must be between 1 and 32.\n");
         return EXIT_FAILURE;
     }
-    uint32_t difficulty_mask = UINT32_MAX >> difficulty;
+    uint32_t difficulty_mask = UINT32_MAX >> difficulty; 
     printf("  Difficulty Mask: ");
     print_binary32(difficulty_mask);
 
@@ -181,11 +146,12 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_threads; i++) {
         thread_data[i].data_block = bitcoin_block_data;
         thread_data[i].difficulty_mask = difficulty_mask;
-        thread_data[i].nonce_start = 1 + i * nonce_partition;
+        thread_data[i].nonce_start = 1 + i * nonce_partition; // give each thread a different part
+        thread_data[i].solution_nonce = 0;
         thread_data[i].nonce_end = (i == num_threads - 1) ? UINT64_MAX : 1 + (i + 1) * nonce_partition;
         thread_data[i].found = &solution_found;
 
-        pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
+        pthread_create(&threads[i], NULL, mine, &thread_data[i]);
     }
 
     int solution_thread = -1;
@@ -198,11 +164,12 @@ int main(int argc, char *argv[]) {
     }
 
     if (solution_thread != -1) {
+        /* When printed in hex, a SHA-1 checksum will be 40 characters. */
         char solution_hash[41];
         sha1tostring(solution_hash, thread_data[solution_thread].digest);
                 printf("Solution found by thread %d:\n", solution_thread);
         printf("Nonce: %lu\n", thread_data[solution_thread].solution_nonce);
-        printf(" Hash: %s\n", solution_hash);
+        printf("Hash: %s\n", solution_hash);
     } else {
         printf("No solution found!\n");
     }

@@ -80,7 +80,7 @@ void *thread_mine(void *arg) {
         sha1sum(data->digest, (uint8_t *) buf, strlen(buf));
         free(buf);
         total_inversions++;
-        
+
         /* Get the first 32 bits of the hash */
         uint32_t hash_front = 0;
         hash_front |= data->digest[0] << 24;

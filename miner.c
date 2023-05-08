@@ -71,12 +71,12 @@ void *thread_mine(void *arg) {
         if (*data->found) {
             break;
         }
-
+        /* A 64-bit unsigned number can be up to 20 characters  when printed: */
         size_t buf_sz = sizeof(char) * (strlen(data->data_block) + 20 + 1);
         char *buf = malloc(buf_sz);
-
+        /* Create a new string by concatenating the block and nonce string.*/
         snprintf(buf, buf_sz, "%s%lu", data->data_block, nonce);
-
+        /* Hash the combined string */
         sha1sum(data->digest, (uint8_t *) buf, strlen(buf));
         free(buf);
         total_inversions++;
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
         printf("Error: Difficulty must be between 1 and 32.\n");
         return EXIT_FAILURE;
     }
-    uint32_t difficulty_mask = UINT32_MAX >> difficulty;
+    uint32_t difficulty_mask = UINT32_MAX >> difficulty; 
     printf("  Difficulty Mask: ");
     print_binary32(difficulty_mask);
 
@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_threads; i++) {
         thread_data[i].data_block = bitcoin_block_data;
         thread_data[i].difficulty_mask = difficulty_mask;
-        thread_data[i].nonce_start = 1 + i * nonce_partition;
+        thread_data[i].nonce_start = 1 + i * nonce_partition; // give each thread a different part
         thread_data[i].nonce_end = (i == num_threads - 1) ? UINT64_MAX : 1 + (i + 1) * nonce_partition;
         thread_data[i].found = &solution_found;
 
@@ -158,6 +158,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (solution_thread != -1) {
+        /* When printed in hex, a SHA-1 checksum will be 40 characters. */
         char solution_hash[41];
         sha1tostring(solution_hash, thread_data[solution_thread].digest);
                 printf("Solution found by thread %d:\n", solution_thread);

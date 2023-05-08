@@ -33,7 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-
 #include "sha1.h"
 
 struct thread_data_t{
@@ -81,7 +80,8 @@ void *thread_mine(void *arg) {
         sha1sum(data->digest, (uint8_t *) buf, strlen(buf));
         free(buf);
         total_inversions++;
-
+        
+        /* Get the first 32 bits of the hash */
         uint32_t hash_front = 0;
         hash_front |= data->digest[0] << 24;
         hash_front |= data->digest[1] << 16;

@@ -107,7 +107,6 @@ int main(int argc, char *argv[]) {
         printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
         return EXIT_FAILURE;
     }
-    
 
     // allow user to specify the number of threads
     int num_threads = atoi(argv[1]);

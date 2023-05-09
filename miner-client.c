@@ -34,6 +34,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include "sha1.h"
+#include "common.h"
 
 struct thread_data_t{
     char *data_block;
@@ -64,7 +65,7 @@ void print_binary32(uint32_t num) {
     puts("");
 }
 
-void *mine(void *arg) {
+void *thread_mine(void *arg) {
     struct thread_data_t *data = (struct thread_data_t *)arg;
 
     for (uint64_t nonce = data->nonce_start; nonce < data->nonce_end; nonce++) {
@@ -103,39 +104,83 @@ void *mine(void *arg) {
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 4) {
-        printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
-        return EXIT_FAILURE;
+    if (argc != 3) {
+       printf("Usage: %s hostname port\n", argv[0]);
+       return 1;
     }
 
-    // allow user to specify the number of threads
-    int num_threads = atoi(argv[1]);
-    if (num_threads < 1) {
-        printf("Error: Must have at least 1 thread.\n");
-        exit(EXIT_FAILURE);  
+    char *server_hostname = argv[1];
+    int port = atoi(argv[2]);
+
+    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd == -1) {
+        perror("socket");
+        return 1;
     }
+
+    struct hostent *server = gethostbyname(server_hostname);
+    if (server == NULL) {
+        fprintf(stderr, "Could not resolve host: %s\n", server_hostname);
+        return 1;
+    }
+
+    struct sockaddr_in serv_addr = { 0 };
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    serv_addr.sin_addr = *((struct in_addr *) server->h_addr);
+
+    // connect to the server
+    if (connect(
+                socket_fd,
+                (struct sockaddr *) &serv_addr,
+                sizeof(struct sockaddr_in)) == -1) {
+
+        perror("connect");
+        return 1;
+    }
+
+    LOG("Connected to server %s:%d\n", server_hostname, port);
+
+    printf("Welcome. Please type your message below, or press ^D to quit.\n");
+
+
+    // request the problem
+    union msg_wrapper wrapper = create_msg(msg_request_task);
+    struct msg_request_task *request = &wrapper.request_task;
+    strncpy(request->username, "TheSegFaults", 19);
+    write_msg(socket_fd, (union msg_wrapper *) request);
+
+    // read the message from the server (problem)
+    union msg_wrapper msg;
+    if (read_msg(fd, &msg) <= 0) {
+        LOGP("Disconnecting\n");
+        return NULL;
+    }
+    //msg.task
+
+    // if (argc != 4) {
+    //     printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
+    //     return EXIT_FAILURE;
+    // }
+
+    // allow user to specify the number of threads
+    uint64_t num_threads = msg.task.sequence_num;
     printf("Number of threads: %d\n", num_threads);
 
     // allow user to specify the difficulty
-    int difficulty = atoi(argv[2]);
+    uint32_t difficulty = msg.task.difficulty;
     if (difficulty < 1 || difficulty > 32) {
         printf("Error: Difficulty must be between 1 and 32.\n");
         return EXIT_FAILURE;
     }
-    uint32_t difficulty_mask;
-    if (difficulty == 32) {
-        difficulty_mask = 00000000000000000000000000000000;
-    } else {
-        difficulty_mask = UINT32_MAX >> difficulty; // loop through and shift on own 
-    }
-    
+    uint32_t difficulty_mask = UINT32_MAX >> difficulty; 
     printf("  Difficulty Mask: ");
     print_binary32(difficulty_mask);
 
     /* We use the input string passed in (argv[3]) as our block data. In a
      * complete bitcoin miner implementation, the block data would be composed
      * of bitcoin transactions. */
-    char *bitcoin_block_data = argv[3];
+    char *bitcoin_block_data = msg.task.block;
     printf("       Block data: [%s]\n", bitcoin_block_data);
 
     printf("\n----------- Starting up miner threads!  -----------\n\n");
@@ -152,11 +197,10 @@ int main(int argc, char *argv[]) {
         thread_data[i].data_block = bitcoin_block_data;
         thread_data[i].difficulty_mask = difficulty_mask;
         thread_data[i].nonce_start = 1 + i * nonce_partition; // give each thread a different part
-        thread_data[i].solution_nonce = 0;
         thread_data[i].nonce_end = (i == num_threads - 1) ? UINT64_MAX : 1 + (i + 1) * nonce_partition;
         thread_data[i].found = &solution_found;
 
-        pthread_create(&threads[i], NULL, mine, &thread_data[i]);
+        pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
     }
 
     int solution_thread = -1;

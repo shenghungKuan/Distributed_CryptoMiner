@@ -122,7 +122,13 @@ int main(int argc, char *argv[]) {
         printf("Error: Difficulty must be between 1 and 32.\n");
         return EXIT_FAILURE;
     }
-    uint32_t difficulty_mask = UINT32_MAX >> difficulty; 
+    uint32_t difficulty_mask;
+    if (difficulty == 32) {
+        difficulty_mask = 00000000000000000000000000000000;
+    } else {
+        difficulty_mask = UINT32_MAX >> difficulty; // loop through and shift on own 
+    }
+    
     printf("  Difficulty Mask: ");
     print_binary32(difficulty_mask);
 

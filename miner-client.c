@@ -33,8 +33,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include "sha1.h"
 #include "common.h"
+#include "task.h"
+#include "logger.h"
 
 struct thread_data_t{
     char *data_block;
@@ -145,32 +152,28 @@ int main(int argc, char *argv[]) {
 
 
     // request the problem
-    union msg_wrapper wrapper = create_msg(msg_request_task);
+    union msg_wrapper wrapper = create_msg(MSG_REQUEST_TASK);
     struct msg_request_task *request = &wrapper.request_task;
     strncpy(request->username, "TheSegFaults", 19);
     write_msg(socket_fd, (union msg_wrapper *) request);
 
     // read the message from the server (problem)
     union msg_wrapper msg;
-    if (read_msg(fd, &msg) <= 0) {
+    if (read_msg(socket_fd, &msg) <= 0) {
         LOGP("Disconnecting\n");
-        return NULL;
+        return 1;
     }
-    //msg.task
 
-    // if (argc != 4) {
-    //     printf("Usage: %s threads difficulty 'block data (string)'\n", argv[0]);
-    //     return EXIT_FAILURE;
-    // }
-
-    // allow user to specify the number of threads
-    uint64_t num_threads = msg.task.sequence_num;
-    printf("Number of threads: %d\n", num_threads);
+    int num_threads = 4;
 
     // allow user to specify the difficulty
     uint32_t difficulty = msg.task.difficulty;
+
+    printf("\nmessage>> %s\n",msg.task.block);
+
     if (difficulty < 1 || difficulty > 32) {
         printf("Error: Difficulty must be between 1 and 32.\n");
+        printf("difficulty %d\n", difficulty);
         return EXIT_FAILURE;
     }
     uint32_t difficulty_mask = UINT32_MAX >> difficulty; 

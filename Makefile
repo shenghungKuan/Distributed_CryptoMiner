@@ -10,7 +10,7 @@ CFLAGS += -g -Wall -fPIC -DLOGGER=$(LOGGER)
 LDLIBS += -lm
 LDFLAGS += -L. -Wl,-rpath='$$ORIGIN'
 
-src=miner.c sha1.c
+src=miner.c sha1.c common.c task.c
 obj=$(src:.c=.o)
 
 all: $(bin) $(lib)
@@ -21,8 +21,13 @@ $(bin): $(obj)
 $(lib): $(obj)
 	$(CC) $(CFLAGS) $(LDLIBS) $(LDFLAGS) $(obj) -shared -o $@
 
+miner-client: miner-client.c logger.h common.c common.h
+	$(CC) $(CFLAGS) $(LDLIBS) $(LDFLAGS) miner-client.c common.c sha1.c -o $@
+
 miner.o: miner.c miner.h sha1.h logger.h
 sha1.o: sha1.c sha1.h logger.h
+miner-client.o: miner-client.c miner.h sha1.h logger.h common.h task.h
+
 
 clean:
 	rm -f $(bin) $(lib) $(obj) vgcore.*

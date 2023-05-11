@@ -56,6 +56,7 @@ struct thread_data_t{
 };
 
 bool stop_threads = false;
+#define USERNAME "TheSegFaults"
 
 
 unsigned long long total_inversions;
@@ -74,6 +75,20 @@ void print_binary32(uint32_t num) {
         printf("%c", ((num & position) == position) ? '1' : '0'); // prints either 0 or 1
     }
     puts("");
+}
+
+void *thread_heartbeat(void *arg){
+    int fd = (int)(intptr_t) arg;
+    union msg_wrapper wrapper = create_msg(MSG_HEARTBEAT);
+    struct msg_heartbeat *heartbeat = &wrapper.heartbeat;
+    strncpy(heartbeat->username, USERNAME, 19);
+
+    while(!stop_threads){
+        write_msg(fd, (union msg_wrapper *)heartbeat);
+        sleep(5);
+
+    }
+    return NULL;
 }
 
 void *thread_mine(void *arg) {
@@ -157,11 +172,11 @@ int main(int argc, char *argv[]) {
 
     printf("Welcome. Please type your message below, or press ^D to quit.\n");
 
-
+    // start loop keep requesting problems
     // request the problem
     union msg_wrapper wrapper = create_msg(MSG_REQUEST_TASK);
     struct msg_request_task *request = &wrapper.request_task;
-    strncpy(request->username, "TheSegFaults", 19);
+    strncpy(request->username, USERNAME, 19);
     write_msg(socket_fd, (union msg_wrapper *) request);
 
     // read the message from the server (problem)
@@ -197,7 +212,7 @@ int main(int argc, char *argv[]) {
 
     double start_time = get_time();
 
-    pthread_t threads[num_threads];
+    pthread_t threads[num_threads], heartbeat;
     struct thread_data_t thread_data[num_threads];
     uint64_t nonce_partition = UINT64_MAX / num_threads;
 
@@ -212,6 +227,7 @@ int main(int argc, char *argv[]) {
 
         pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
     }
+    pthread_create(&heartbeat, NULL, thread_heartbeat, &socket_fd);
 
     int solution_thread = -1;
     for (int i = 0; i < num_threads; i++) {
@@ -221,6 +237,7 @@ int main(int argc, char *argv[]) {
             solution_thread = i;
         }
     }
+    pthread_join(heartbeat, NULL);
 
     if (solution_thread != -1) {
         /* When printed in hex, a SHA-1 checksum will be 40 characters. */

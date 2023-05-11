@@ -43,6 +43,9 @@
 #include "task.h"
 #include "logger.h"
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
 struct thread_data_t{
     char *data_block;
     uint32_t difficulty_mask;
@@ -52,6 +55,8 @@ struct thread_data_t{
     uint64_t solution_nonce;
     bool *found;
 };
+
+bool stop_threads = false;
 
 
 unsigned long long total_inversions;
@@ -76,7 +81,7 @@ void *thread_mine(void *arg) {
     struct thread_data_t *data = (struct thread_data_t *)arg;
 
     for (uint64_t nonce = data->nonce_start; nonce < data->nonce_end; nonce++) {
-        if (*data->found) {
+        if (stop_threads) {
             break;
         }
         /* A 64-bit unsigned number can be up to 20 characters  when printed: */
@@ -100,6 +105,9 @@ void *thread_mine(void *arg) {
             // printf("Thread %ld found a solution: nonce=%lu\n", data->nonce_start, nonce);
             data->solution_nonce = nonce;
             *data->found = true;
+            pthread_mutex_lock(&mutex);
+            stop_threads = true;
+            pthread_mutex_unlock(&mutex);
             break;
         }
     }

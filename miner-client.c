@@ -212,6 +212,7 @@ int main(int argc, char *argv[]) {
 
         pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
     }
+    
 
     int solution_thread = -1;
     for (int i = 0; i < num_threads; i++) {

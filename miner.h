@@ -1,4 +1,5 @@
 #ifndef _MINER_H_
+#include <stdint.h>
 #define _MINER_H_
 
 /**

@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
     if (difficulty == 32) {
         difficulty_mask = 00000000000000000000000000000000;
     } else {
-        difficulty_mask = UINT32_MAX >> difficulty; // loop through and shift on own 
+        difficulty_mask = UINT32_MAX >> difficulty;  
     }
     
     printf("  Difficulty Mask: ");

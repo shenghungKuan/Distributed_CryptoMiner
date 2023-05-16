@@ -172,88 +172,100 @@ int main(int argc, char *argv[]) {
 
     printf("Welcome. Please type your message below, or press ^D to quit.\n");
 
-    // start loop keep requesting problems
-    // request the problem
-    union msg_wrapper wrapper = create_msg(MSG_REQUEST_TASK);
-    struct msg_request_task *request = &wrapper.request_task;
-    strncpy(request->username, USERNAME, 19);
-    write_msg(socket_fd, (union msg_wrapper *) request);
+    while (true) {
+        // start loop keep requesting problems
+        // request the problem
+        union msg_wrapper wrapper = create_msg(MSG_REQUEST_TASK);
+        struct msg_request_task *request = &wrapper.request_task;
+        strncpy(request->username, USERNAME, 19);
+        write_msg(socket_fd, (union msg_wrapper *) request);
 
-    // read the message from the server (problem)
-    union msg_wrapper msg;
-    if (read_msg(socket_fd, &msg) <= 0) {
-        LOGP("Disconnecting\n");
-        return 1;
-    }
-
-    int num_threads = 4;
-
-    // allow user to specify the difficulty
-    uint32_t difficulty = msg.task.difficulty;
-
-    printf("\nmessage>> %s\n",msg.task.block);
-
-    if (difficulty < 1 || difficulty > 32) {
-        printf("Error: Difficulty must be between 1 and 32.\n");
-        printf("difficulty %d\n", difficulty);
-        return EXIT_FAILURE;
-    }
-    uint32_t difficulty_mask = UINT32_MAX >> difficulty; 
-    printf("  Difficulty Mask: ");
-    print_binary32(difficulty_mask);
-
-    /* We use the input string passed in (argv[3]) as our block data. In a
-     * complete bitcoin miner implementation, the block data would be composed
-     * of bitcoin transactions. */
-    char *bitcoin_block_data = msg.task.block;
-    printf("       Block data: [%s]\n", bitcoin_block_data);
-
-    printf("\n----------- Starting up miner threads!  -----------\n\n");
-
-    double start_time = get_time();
-
-    pthread_t threads[num_threads], heartbeat;
-    struct thread_data_t thread_data[num_threads];
-    uint64_t nonce_partition = UINT64_MAX / num_threads;
-
-    bool solution_found = false;
-
-    for (int i = 0; i < num_threads; i++) {
-        thread_data[i].data_block = bitcoin_block_data;
-        thread_data[i].difficulty_mask = difficulty_mask;
-        thread_data[i].nonce_start = 1 + i * nonce_partition; // give each thread a different part
-        thread_data[i].nonce_end = (i == num_threads - 1) ? UINT64_MAX : 1 + (i + 1) * nonce_partition;
-        thread_data[i].found = &solution_found;
-
-        pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
-    }
-
-    int solution_thread = -1;
-    for (int i = 0; i < num_threads; i++) {
-        pthread_join(threads[i], NULL);
-
-        if (thread_data[i].solution_nonce != 0) {
-            solution_thread = i;
+        // read the message from the server (problem)
+        union msg_wrapper msg;
+        if (read_msg(socket_fd, &msg) <= 0) {
+            LOGP("Disconnecting\n");
+            return 1;
         }
-    }
-    pthread_join(heartbeat, NULL);
 
-    if (solution_thread != -1) {
-        /* When printed in hex, a SHA-1 checksum will be 40 characters. */
-        char solution_hash[41];
-        sha1tostring(solution_hash, thread_data[solution_thread].digest);
-                printf("Solution found by thread %d:\n", solution_thread);
-        printf("Nonce: %lu\n", thread_data[solution_thread].solution_nonce);
-        printf("Hash: %s\n", solution_hash);
-    } else {
-        printf("No solution found!\n");
-    }
+        int num_threads = 4;
 
-    double end_time = get_time();
+        // allow user to specify the difficulty
+        uint32_t difficulty = msg.task.difficulty;
 
-    double total_time = end_time - start_time;
-    printf("%llu hashes in %.2fs (%.2f hashes/sec)\n",
+        printf("\nmessage>> %s\n",msg.task.block);
+
+        if (difficulty < 1 || difficulty > 32) {
+            printf("Error: Difficulty must be between 1 and 32.\n");
+            printf("difficulty %d\n", difficulty);
+            return EXIT_FAILURE;
+        }
+        uint32_t difficulty_mask = UINT32_MAX >> difficulty; 
+        printf("  Difficulty Mask: ");
+        print_binary32(difficulty_mask);
+
+        /* We use the input string passed in (argv[3]) as our block data. In a
+        * complete bitcoin miner implementation, the block data would be composed
+        * of bitcoin transactions. */
+        char *bitcoin_block_data = msg.task.block;
+        printf("       Block data: [%s]\n", bitcoin_block_data);
+
+        printf("\n----------- Starting up miner threads!  -----------\n\n");
+
+        double start_time = get_time();
+
+        pthread_t threads[num_threads], heartbeat;
+        struct thread_data_t thread_data[num_threads];
+        uint64_t nonce_partition = UINT64_MAX / num_threads;
+
+        bool solution_found = false;
+
+        for (int i = 0; i < num_threads; i++) {
+            thread_data[i].data_block = bitcoin_block_data;
+            thread_data[i].difficulty_mask = difficulty_mask;
+            thread_data[i].nonce_start = 1 + i * nonce_partition; // give each thread a different part
+            thread_data[i].nonce_end = (i == num_threads - 1) ? UINT64_MAX : 1 + (i + 1) * nonce_partition;
+            thread_data[i].found = &solution_found;
+
+            pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
+        }
+
+        int solution_thread = -1;
+        for (int i = 0; i < num_threads; i++) {
+            pthread_join(threads[i], NULL);
+
+            if (thread_data[i].solution_nonce != 0) {
+                solution_thread = i;
+            }
+        }
+        pthread_join(heartbeat, NULL);
+
+        if (solution_thread != -1) {
+            /* When printed in hex, a SHA-1 checksum will be 40 characters. */
+            char solution_hash[41];
+            sha1tostring(solution_hash, thread_data[solution_thread].digest);
+            printf("Solution found by thread %d:\n", solution_thread);
+            printf("Nonce: %lu\n", thread_data[solution_thread].solution_nonce);
+            printf("Hash: %s\n", solution_hash);
+            /* Send solution to server*/
+            union msg_wrapper wrapper = create_msg(MSG_SOLUTION);
+            struct msg_solution *solution = &wrapper.solution;
+            strncpy(solution->username, USERNAME, 19);
+            solution->nonce = thread_data[solution_thread].solution_nonce;
+            write_msg(socket_fd, (union msg_wrapper *)solution);
+        } else {
+            printf("No solution found!\n");
+        }
+
+        double end_time = get_time();
+
+        double total_time = end_time - start_time;
+        printf("%llu hashes in %.2fs (%.2f hashes/sec)\n",
             total_inversions, total_time, total_inversions / total_time);
+
+        stop_threads = false;
+
+    }
+
 
     return 0;
 }

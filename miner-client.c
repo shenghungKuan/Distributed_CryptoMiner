@@ -55,6 +55,12 @@ struct thread_data_t{
     bool *found;
 };
 
+struct heartbeat_info_t{
+    char *data_block;
+    uint32_t difficulty_mask;
+    int fd;
+};
+
 bool stop_threads = false;
 #define USERNAME "TheSegFaults"
 
@@ -78,10 +84,19 @@ void print_binary32(uint32_t num) {
 }
 
 void *thread_heartbeat(void *arg){
-    int fd = (int)(intptr_t) arg;
+    struct heartbeat_info_t *heartbeat_info = (struct heartbeat_info_t *)arg;
+    int fd = heartbeat_info->fd;
     union msg_wrapper wrapper = create_msg(MSG_HEARTBEAT);
     struct msg_heartbeat *heartbeat = &wrapper.heartbeat;
     strncpy(heartbeat->username, USERNAME, 19);
+
+    union msg_wrapper msg;
+    if (read_msg(fd, &msg) <= 0) {
+        LOGP("Disconnecting\n");
+        return NULL;
+    }
+
+    // have to check whether the current task has been solved
 
     while(!stop_threads){
         write_msg(fd, (union msg_wrapper *)heartbeat);
@@ -173,6 +188,7 @@ int main(int argc, char *argv[]) {
     printf("Welcome. Please type your message below, or press ^D to quit.\n");
 
     while (true) {
+        int num_threads = 4;
         // start loop keep requesting problems
         // request the problem
         union msg_wrapper wrapper = create_msg(MSG_REQUEST_TASK);
@@ -187,9 +203,6 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
-        int num_threads = 4;
-
-        // allow user to specify the difficulty
         uint32_t difficulty = msg.task.difficulty;
 
         printf("\nmessage>> %s\n",msg.task.block);
@@ -213,11 +226,17 @@ int main(int argc, char *argv[]) {
 
         double start_time = get_time();
 
+        // thread initiallization
         pthread_t threads[num_threads], heartbeat;
         struct thread_data_t thread_data[num_threads];
         uint64_t nonce_partition = UINT64_MAX / num_threads;
-
         bool solution_found = false;
+        struct heartbeat_info_t *heartbeat_info;
+        heartbeat_info->data_block = bitcoin_block_data;
+        heartbeat_info->difficulty_mask = difficulty_mask;
+        heartbeat_info->fd = socket_fd;
+
+        pthread_create(&heartbeat, NULL, thread_heartbeat, &heartbeat_info);
 
         for (int i = 0; i < num_threads; i++) {
             thread_data[i].data_block = bitcoin_block_data;

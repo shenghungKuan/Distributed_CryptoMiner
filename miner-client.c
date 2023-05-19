@@ -91,8 +91,8 @@ void *thread_heartbeat(void *arg){
     strncpy(heartbeat->username, USERNAME, 19);
 
     union msg_wrapper msg;
-    // bool next = false;
-    while(!stop_threads){
+    bool next = false;
+    while(!stop_threads || !next){
         write_msg(fd, (union msg_wrapper *) &wrapper);
         LOGP("heartbeating...\n");
         sleep(10);
@@ -100,12 +100,15 @@ void *thread_heartbeat(void *arg){
             LOGP("Disconnecting\n");
             return NULL;
         }
+        LOG("sequence number in heartbeat: %ld\n", heartbeat_info->sequence_num);
+        LOG("sequence number from server in heartbeat: %ld\n", msg.heartbeat_reply.sequence_num);
         if(msg.heartbeat_reply.sequence_num != heartbeat_info->sequence_num){
             // pthread_mutex_lock(&mutex);
             stop_threads = true;
             // pthread_mutex_unlock(&mutex);
             return NULL;
         }
+        next = true;
     }
     return NULL;
 }
@@ -212,6 +215,10 @@ int main(int argc, char *argv[]) {
             LOGP("no request message read\n");
             continue;
         }
+        if(msg_req.task.sequence_num == 0){
+            sleep(10);
+            continue;
+        }
 
         // int difficulty = 0;
         uint32_t difficulty_mask = msg_req.task.difficulty_mask;
@@ -240,6 +247,7 @@ int main(int argc, char *argv[]) {
         struct heartbeat_info_t heartbeat_info;
         heartbeat_info.sequence_num = msg_req.task.sequence_num;        
         heartbeat_info.fd = socket_fd;
+        LOG("sequence number: %ld\n", msg_req.task.sequence_num);
 
         for (int i = 0; i < num_threads; i++) {
             thread_data[i].data_block = bitcoin_block_data;
@@ -247,6 +255,7 @@ int main(int argc, char *argv[]) {
             thread_data[i].nonce_start = 1 + i * nonce_partition; // give each thread a different part
             thread_data[i].nonce_end = (i == num_threads - 1) ? UINT64_MAX : 1 + (i + 1) * nonce_partition;
             thread_data[i].found = &solution_found;
+            thread_data[i].solution_nonce = 0;
 
             pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
         }
@@ -278,8 +287,11 @@ int main(int argc, char *argv[]) {
             union msg_wrapper wrapper_sol = create_msg(MSG_SOLUTION);
             struct msg_solution *solution = &wrapper_sol.solution;
             strncpy(solution->username, USERNAME, 19);
+            strcpy(solution->block, bitcoin_block_data);
             solution->nonce = thread_data[solution_thread].solution_nonce;
             solution->sequence_num = heartbeat_info.sequence_num;
+            solution->difficulty_mask = difficulty_mask;
+            LOG("sequence number in solution: %ld", heartbeat_info.sequence_num);
             write_msg(socket_fd, (union msg_wrapper *) &wrapper_sol);
         } else {
             printf("No solution found!\n");

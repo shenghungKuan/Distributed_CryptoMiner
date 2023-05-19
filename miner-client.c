@@ -48,6 +48,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 struct thread_data_t{
     char *data_block;
     uint32_t difficulty_mask;
+    // int difficulty;
     uint64_t nonce_start;
     uint64_t nonce_end;
     uint8_t digest[SHA1_HASH_SIZE];
@@ -91,20 +92,19 @@ void *thread_heartbeat(void *arg){
 
     union msg_wrapper msg;
 
-    // have to check whether the current task has been solved
-
     while(!stop_threads){
+        write_msg(fd, (union msg_wrapper *)heartbeat);
+        LOGP("heartbeating...\n");
         if (read_msg(fd, &msg) <= 0) {
             LOGP("Disconnecting\n");
             return NULL;
         }
         if(msg.heartbeat_reply.sequence_num != heartbeat_info->sequence_num){
-            pthread_mutex_lock(&mutex);
+            // pthread_mutex_lock(&mutex);
             stop_threads = true;
-            pthread_mutex_unlock(&mutex);
+            // pthread_mutex_unlock(&mutex);
             return NULL;
         }
-        write_msg(fd, (union msg_wrapper *)heartbeat);
         sleep(10);
 
     }
@@ -112,6 +112,7 @@ void *thread_heartbeat(void *arg){
 }
 
 void *thread_mine(void *arg) {
+    LOG("thread%ld start mining\n", pthread_self());
     struct thread_data_t *data = (struct thread_data_t *)arg;
 
     for (uint64_t nonce = data->nonce_start; nonce < data->nonce_end; nonce++) {
@@ -139,9 +140,10 @@ void *thread_mine(void *arg) {
             // printf("Thread %ld found a solution: nonce=%lu\n", data->nonce_start, nonce);
             data->solution_nonce = nonce;
             *data->found = true;
-            pthread_mutex_lock(&mutex);
+            LOG("solution: %ld\n", nonce);
+            // pthread_mutex_lock(&mutex);
             stop_threads = true;
-            pthread_mutex_unlock(&mutex);
+            // pthread_mutex_unlock(&mutex);
             break;
         }
     }
@@ -190,7 +192,7 @@ int main(int argc, char *argv[]) {
 
     LOG("Connected to server %s:%d\n", server_hostname, port);
 
-    printf("Welcome. Please type your message below, or press ^D to quit.\n");
+    printf("Press ^c to quit.\n");
 
     while (true) {
         int num_threads = 4;
@@ -208,18 +210,25 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
-        uint32_t difficulty = msg.task.difficulty;
+        // int difficulty = 0;
+        uint32_t difficulty_mask = msg.task.difficulty_mask;
+        printf("  Difficulty Mask: ");
+        print_binary32(difficulty_mask);
+        // while(difficulty_mask > 0){
+        //     difficulty_mask = difficulty_mask >> 1;
+        //     difficulty += 1;
+        // }
+        // LOG("difficulty: %d", difficulty);
 
         printf("\nmessage>> %s\n",msg.task.block);
 
-        if (difficulty < 1 || difficulty > 32) {
-            printf("Error: Difficulty must be between 1 and 32.\n");
-            printf("difficulty %d\n", difficulty);
-            return EXIT_FAILURE;
-        }
-        uint32_t difficulty_mask = UINT32_MAX >> difficulty; 
-        printf("  Difficulty Mask: ");
-        print_binary32(difficulty_mask);
+
+        // if (difficulty < 1 || difficulty > 32) {
+        //     printf("Error: Difficulty must be between 1 and 32.\n");
+        //     printf("difficulty %d\n", difficulty);
+        //     return EXIT_FAILURE;
+        // }
+        
 
         /* We use the input string passed in (argv[3]) as our block data. In a
         * complete bitcoin miner implementation, the block data would be composed
@@ -238,11 +247,9 @@ int main(int argc, char *argv[]) {
         bool solution_found = false;
 
         // heartbeat initialization
-        struct heartbeat_info_t *heartbeat_info;
-        heartbeat_info->sequence_num = msg.task.sequence_num;        
-        heartbeat_info->fd = socket_fd;
-
-        pthread_create(&heartbeat, NULL, thread_heartbeat, &heartbeat_info);
+        struct heartbeat_info_t heartbeat_info;
+        heartbeat_info.sequence_num = msg.task.sequence_num;        
+        heartbeat_info.fd = socket_fd;
 
         for (int i = 0; i < num_threads; i++) {
             thread_data[i].data_block = bitcoin_block_data;
@@ -253,6 +260,10 @@ int main(int argc, char *argv[]) {
 
             pthread_create(&threads[i], NULL, thread_mine, &thread_data[i]);
         }
+        LOGP("mining threads created\n");
+
+        pthread_create(&heartbeat, NULL, thread_heartbeat, &heartbeat_info);
+        LOGP("heartbeat thread created\n");
 
         int solution_thread = -1;
         for (int i = 0; i < num_threads; i++) {
@@ -262,7 +273,9 @@ int main(int argc, char *argv[]) {
                 solution_thread = i;
             }
         }
+        LOGP("mining over");
         pthread_join(heartbeat, NULL);
+        LOGP("heartbeat over\n");
 
         if (solution_thread != -1) {
             /* When printed in hex, a SHA-1 checksum will be 40 characters. */

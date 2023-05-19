@@ -7,11 +7,11 @@
 
 #include "task.h"
 
-#ifndef VERSION
-#define VERSION 1.0
+#ifndef DEBUG_ON
+#define DEBUG_ON 1
 #endif
 
-#define DEBUG_ON 1
+#define MAX_USER_LEN 24
 
 struct __attribute__((__packed__)) msg_header {
     uint64_t msg_len;
@@ -20,21 +20,23 @@ struct __attribute__((__packed__)) msg_header {
 
 struct __attribute__((__packed__)) msg_request_task {
     struct msg_header header;
-    char username[20];
+    char username[MAX_USER_LEN];
 };
 
 struct __attribute__((__packed__)) msg_task {
         struct msg_header header;
         char block[MAX_BLOCK_LEN];
-        uint32_t difficulty;
+        uint32_t difficulty_mask;
+        uint64_t sequence_num;
 };
 
 struct __attribute__((__packed__)) msg_solution {
         struct msg_header header;
-        char username[20];
+        char username[MAX_USER_LEN];
         char block[MAX_BLOCK_LEN];
-        uint32_t difficulty;
+        uint32_t difficulty_mask;
         uint64_t nonce;
+        uint64_t sequence_num;
 };
 
 struct __attribute__((__packed__)) msg_verification {
@@ -45,7 +47,12 @@ struct __attribute__((__packed__)) msg_verification {
 
 struct __attribute__((__packed__)) msg_heartbeat {
         struct msg_header header;
-        char username[20];
+        char username[MAX_USER_LEN];
+};
+
+struct __attribute__((__packed__)) msg_heartbeat_reply {
+        struct msg_header header;
+        uint64_t sequence_num;
 };
 
 union __attribute__((__packed__)) msg_wrapper {
@@ -55,6 +62,7 @@ union __attribute__((__packed__)) msg_wrapper {
         struct msg_solution solution;
         struct msg_verification verification;
         struct msg_heartbeat heartbeat;
+        struct msg_heartbeat_reply heartbeat_reply;
 };
 
 enum MSG_TYPES {
@@ -63,6 +71,7 @@ enum MSG_TYPES {
         MSG_SOLUTION,
         MSG_VERIFICATION,
         MSG_HEARTBEAT,
+        MSG_HEARTBEAT_REPLY,
 };
 
 size_t msg_size(enum MSG_TYPES type);

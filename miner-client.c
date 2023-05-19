@@ -279,7 +279,7 @@ int main(int argc, char *argv[]) {
             struct msg_solution *solution = &wrapper_sol.solution;
             strncpy(solution->username, USERNAME, 19);
             solution->nonce = thread_data[solution_thread].solution_nonce;
-            solution->sequence_num = msg_req.task.sequence_num;
+            solution->sequence_num = heartbeat_info.sequence_num;
             write_msg(socket_fd, (union msg_wrapper *) &wrapper_sol);
         } else {
             printf("No solution found!\n");

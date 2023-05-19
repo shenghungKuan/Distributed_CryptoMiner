@@ -56,8 +56,7 @@ struct thread_data_t{
 };
 
 struct heartbeat_info_t{
-    char *data_block;
-    uint32_t difficulty_mask;
+    uint64_t sequence_num;
     int fd;
 };
 
@@ -91,16 +90,22 @@ void *thread_heartbeat(void *arg){
     strncpy(heartbeat->username, USERNAME, 19);
 
     union msg_wrapper msg;
-    if (read_msg(fd, &msg) <= 0) {
-        LOGP("Disconnecting\n");
-        return NULL;
-    }
 
     // have to check whether the current task has been solved
 
     while(!stop_threads){
+        if (read_msg(fd, &msg) <= 0) {
+            LOGP("Disconnecting\n");
+            return NULL;
+        }
+        if(msg.heartbeat_reply.sequence_num != heartbeat_info->sequence_num){
+            pthread_mutex_lock(&mutex);
+            stop_threads = true;
+            pthread_mutex_unlock(&mutex);
+            return NULL;
+        }
         write_msg(fd, (union msg_wrapper *)heartbeat);
-        sleep(5);
+        sleep(10);
 
     }
     return NULL;
@@ -226,14 +231,15 @@ int main(int argc, char *argv[]) {
 
         double start_time = get_time();
 
-        // thread initiallization
+        // mining thread initiallization
         pthread_t threads[num_threads], heartbeat;
         struct thread_data_t thread_data[num_threads];
         uint64_t nonce_partition = UINT64_MAX / num_threads;
         bool solution_found = false;
+
+        // heartbeat initialization
         struct heartbeat_info_t *heartbeat_info;
-        heartbeat_info->data_block = bitcoin_block_data;
-        heartbeat_info->difficulty_mask = difficulty_mask;
+        heartbeat_info->sequence_num = msg.task.sequence_num;        
         heartbeat_info->fd = socket_fd;
 
         pthread_create(&heartbeat, NULL, thread_heartbeat, &heartbeat_info);

@@ -198,42 +198,33 @@ int main(int argc, char *argv[]) {
         int num_threads = 4;
         // start loop keep requesting problems
         // request the problem
-        union msg_wrapper wrapper = create_msg(MSG_REQUEST_TASK);
-        struct msg_request_task *request = &wrapper.request_task;
+        union msg_wrapper wrapper_req = create_msg(MSG_REQUEST_TASK);
+        struct msg_request_task *request = &wrapper_req.request_task;
         strncpy(request->username, USERNAME, 19);
-        write_msg(socket_fd, (union msg_wrapper *) request);
+        write_msg(socket_fd, (union msg_wrapper *) &wrapper_req);
 
         // read the message from the server (problem)
-        union msg_wrapper msg;
-        if (read_msg(socket_fd, &msg) <= 0) {
-            LOGP("Disconnecting\n");
+        union msg_wrapper msg_req;
+        ssize_t bytes_read_req = read_msg(socket_fd, &msg_req);
+        if (bytes_read_req < 0) {
+            perror("read_msg_req");
             return 1;
+        }else if(bytes_read_req == 0){
+            LOGP("no request message read\n");
+            continue;
         }
 
         // int difficulty = 0;
-        uint32_t difficulty_mask = msg.task.difficulty_mask;
+        uint32_t difficulty_mask = msg_req.task.difficulty_mask;
         printf("  Difficulty Mask: ");
         print_binary32(difficulty_mask);
-        // while(difficulty_mask > 0){
-        //     difficulty_mask = difficulty_mask >> 1;
-        //     difficulty += 1;
-        // }
-        // LOG("difficulty: %d", difficulty);
 
-        printf("\nmessage>> %s\n",msg.task.block);
-
-
-        // if (difficulty < 1 || difficulty > 32) {
-        //     printf("Error: Difficulty must be between 1 and 32.\n");
-        //     printf("difficulty %d\n", difficulty);
-        //     return EXIT_FAILURE;
-        // }
-        
+        printf("\nmessage>> %s\n",msg_req.task.block);
 
         /* We use the input string passed in (argv[3]) as our block data. In a
         * complete bitcoin miner implementation, the block data would be composed
         * of bitcoin transactions. */
-        char *bitcoin_block_data = msg.task.block;
+        char *bitcoin_block_data = msg_req.task.block;
         printf("       Block data: [%s]\n", bitcoin_block_data);
 
         printf("\n----------- Starting up miner threads!  -----------\n\n");
@@ -248,7 +239,7 @@ int main(int argc, char *argv[]) {
 
         // heartbeat initialization
         struct heartbeat_info_t heartbeat_info;
-        heartbeat_info.sequence_num = msg.task.sequence_num;        
+        heartbeat_info.sequence_num = msg_req.task.sequence_num;        
         heartbeat_info.fd = socket_fd;
 
         for (int i = 0; i < num_threads; i++) {
@@ -273,7 +264,7 @@ int main(int argc, char *argv[]) {
                 solution_thread = i;
             }
         }
-        LOGP("mining over");
+        LOGP("mining over\n");
         pthread_join(heartbeat, NULL);
         LOGP("heartbeat over\n");
 
@@ -285,11 +276,11 @@ int main(int argc, char *argv[]) {
             printf("Nonce: %lu\n", thread_data[solution_thread].solution_nonce);
             printf("Hash: %s\n", solution_hash);
             /* Send solution to server*/
-            union msg_wrapper wrapper = create_msg(MSG_SOLUTION);
-            struct msg_solution *solution = &wrapper.solution;
+            union msg_wrapper wrapper_sol = create_msg(MSG_SOLUTION);
+            struct msg_solution *solution = &wrapper_sol.solution;
             strncpy(solution->username, USERNAME, 19);
             solution->nonce = thread_data[solution_thread].solution_nonce;
-            write_msg(socket_fd, (union msg_wrapper *)solution);
+            write_msg(socket_fd, (union msg_wrapper *) &wrapper_sol);
         } else {
             printf("No solution found!\n");
         }
@@ -301,6 +292,20 @@ int main(int argc, char *argv[]) {
             total_inversions, total_time, total_inversions / total_time);
 
         stop_threads = false;
+
+        // get verification
+        union msg_wrapper msg_ver;
+        ssize_t bytes_read_ver = read_msg(socket_fd, &msg_ver);
+        if(bytes_read_ver == -1){
+            perror("read_msg");
+            break;
+        }
+        else if (bytes_read_ver == 0) {
+            LOGP("no verification message read\n");
+            continue;
+        }
+        printf("find solution?(1 : true) %i\n", msg_ver.verification.ok);
+        printf("verification: %s\n", msg_ver.verification.error_description);
 
     }
 

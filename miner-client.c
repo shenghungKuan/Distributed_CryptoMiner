@@ -93,7 +93,7 @@ void *thread_heartbeat(void *arg){
     union msg_wrapper msg;
 
     while(!stop_threads){
-        write_msg(fd, (union msg_wrapper *)heartbeat);
+        write_msg(fd, (union msg_wrapper *) &wrapper);
         LOGP("heartbeating...\n");
         if (read_msg(fd, &msg) <= 0) {
             LOGP("Disconnecting\n");
@@ -283,6 +283,7 @@ int main(int argc, char *argv[]) {
             write_msg(socket_fd, (union msg_wrapper *) &wrapper_sol);
         } else {
             printf("No solution found!\n");
+            continue;
         }
 
         double end_time = get_time();

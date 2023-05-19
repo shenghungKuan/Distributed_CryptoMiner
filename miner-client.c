@@ -91,10 +91,11 @@ void *thread_heartbeat(void *arg){
     strncpy(heartbeat->username, USERNAME, 19);
 
     union msg_wrapper msg;
-
+    // bool next = false;
     while(!stop_threads){
         write_msg(fd, (union msg_wrapper *) &wrapper);
         LOGP("heartbeating...\n");
+        sleep(10);
         if (read_msg(fd, &msg) <= 0) {
             LOGP("Disconnecting\n");
             return NULL;
@@ -105,8 +106,6 @@ void *thread_heartbeat(void *arg){
             // pthread_mutex_unlock(&mutex);
             return NULL;
         }
-        sleep(10);
-
     }
     return NULL;
 }
@@ -280,6 +279,7 @@ int main(int argc, char *argv[]) {
             struct msg_solution *solution = &wrapper_sol.solution;
             strncpy(solution->username, USERNAME, 19);
             solution->nonce = thread_data[solution_thread].solution_nonce;
+            solution->sequence_num = msg_req.task.sequence_num;
             write_msg(socket_fd, (union msg_wrapper *) &wrapper_sol);
         } else {
             printf("No solution found!\n");

@@ -4,15 +4,27 @@ This program is an implementation of a miner program that performs the hash inve
 
 
 ## miner  
-usage: ./miner [number of threads(integer)] [difficulty(integer)] "[block data]"  
-e.g. ./miner 4 24 "hello world!!!"  
-description:    
+Usage:  
+```
+./miner [number of threads(integer)] [difficulty(integer)] "[block data]"
+```  
+Sample usage:  
+```
+./miner 4 24 "hello world!!!"
+```
+Description:    
 encode the given block data with a nonce that produce "difficulty" zeros multi-threading with "number of threads" threads.
 
 ## miner-client 
-usage: ./miner-client [host type] [port number]     
-e.g. ./miner-client localhost 3001  
-description:  
+Usage:  
+```
+./miner-client [host type] [port number]
+```   
+Sample usage:   
+```
+./miner-client localhost 3001
+```
+Description:  
 request a task including "block data" and "difficulty" from the server, find the solution(nonce) using multi-threading, and send it back to the server repeatedly.
 
 
